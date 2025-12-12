@@ -19,7 +19,7 @@ import asyncio
 from typing import List, Dict
 from io import BytesIO
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -589,6 +589,19 @@ def process_report_data_for_frontend(report):
         "peak_hour": template_data['peak_hour'],
         "created_at": str(report['created_at'])
     }
+
+
+# 静态文件服务 - 用于 Docker 部署时提供前端页面
+frontend_dist = os.path.join(PROJECT_ROOT, "frontend", "dist")
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_frontend(path):
+    """提供前端静态文件服务"""
+    if path and os.path.exists(os.path.join(frontend_dist, path)):
+        return send_from_directory(frontend_dist, path)
+    # 默认返回 index.html（用于 Vue Router）
+    return send_from_directory(frontend_dist, "index.html")
 
 
 if __name__ == "__main__":
