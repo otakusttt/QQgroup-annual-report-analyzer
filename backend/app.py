@@ -58,7 +58,7 @@ app.config['MAX_CONTENT_LENGTH'] = max_size_mb * 1024 * 1024
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-please-change')
 
 # 初始化存储服务（根据配置选择 MySQL 或 JSON）
-storage_mode = os.getenv('STORAGE_MODE', 'json').lower()  # 默认使用 json 存储
+storage_mode = os.getenv('STORAGE_MODE', 'json').lower()
 
 if storage_mode == 'mysql':
     try:
@@ -88,7 +88,6 @@ def generate_ai_comments(selected_word_objects: List[Dict]) -> Dict[str, str]:
         ai_gen = AICommentGenerator()
         
         if ai_gen.client:
-            print("🤖 正在生成AI锐评...")
             comments = ai_gen.generate_batch(selected_word_objects)
             print("✅ AI锐评生成完成")
             return comments
@@ -142,6 +141,15 @@ def upload_and_analyze():
     
     # 生成report_id
     report_id = str(uuid.uuid4())
+    
+    # 添加请求日志
+    print(f"\n{'='*60}")
+    print(f"📤 收到上传请求 | Report ID: {report_id}")
+    print(f"   文件名: {file.filename}")
+    print(f"   文件大小: {file.content_length or '未知'} 字节")
+    print(f"   AI自动选词: {auto_select}")
+    print(f"   请求来源: {request.remote_addr}")
+    print(f"{'='*60}\n")
     
     # 临时保存文件
     base_dir = os.path.join(PROJECT_ROOT, "runtime_outputs")
@@ -232,8 +240,15 @@ def finalize_report_endpoint():
     if not report_id or not selected_words:
         return jsonify({"error": "缺少必要参数"}), 400
     
+    # 添加请求日志
+    print(f"\n{'='*60}")
+    print(f"📝 收到选词确认请求 | Report ID: {report_id}")
+    print(f"   选中词汇: {', '.join(selected_words[:5])}{'...' if len(selected_words) > 5 else ''}")
+    print(f"   词汇数量: {len(selected_words)}")
+    print(f"{'='*60}\n")
+    
     try:
-        # 从临时文件加载分析结果
+        # 从临时文件加载分析结果（不需要重新分析！）
         base_dir = os.path.join(PROJECT_ROOT, "runtime_outputs")
         temp_dir = os.path.join(base_dir, "temp")
         result_temp_path = os.path.join(temp_dir, f"{report_id}_result.json")
@@ -241,28 +256,21 @@ def finalize_report_endpoint():
         if not os.path.exists(result_temp_path):
             return jsonify({"error": "分析结果已过期，请重新上传"}), 404
         
+        print("📂 加载已缓存的分析结果...")
         with open(result_temp_path, 'r', encoding='utf-8') as f:
             report = json.load(f)
         
-        # 重建analyzer（用于AI锐评）
-        original_json_path = os.path.join(temp_dir, f"{report_id}.json")
-        if os.path.exists(original_json_path):
-            # 使用流式解析加载JSON（避免内存溢出）
-            json_data = load_json(original_json_path)
-            analyzer = analyzer_mod.ChatAnalyzer(json_data)
-            analyzer.analyze()
-        else:
-            analyzer = None
-        
+
         result = finalize_report(
             report_id=report_id,
-            analyzer=analyzer,
+            analyzer=None,  
             selected_words=selected_words,
             auto_mode=False,
             report_data=report
         )
         
         # 清理临时文件
+        original_json_path = os.path.join(temp_dir, f"{report_id}.json")
         cleanup_temp_files(result_temp_path)
         if os.path.exists(original_json_path):
             cleanup_temp_files(original_json_path)

@@ -18,7 +18,6 @@ def load_json(filepath):
             parser = ijson.parse(f)
             result = {
                 'messages': [],
-                'chatName': None,
                 'chatInfo': {}
             }
             
@@ -27,10 +26,7 @@ def load_json(filepath):
             message_count = 0
             
             for prefix, event, value in parser:
-                # 聊天名称
-                if prefix == 'chatName' and event == 'string':
-                    result['chatName'] = value
-                elif prefix == 'chatInfo.name' and event == 'string':
+                if prefix == 'chatInfo.name' and event == 'string':
                     result['chatInfo']['name'] = value
                 
                 # 开始处理 messages 数组
@@ -111,7 +107,13 @@ def load_json(filepath):
                                 if current_message['rawMessage']['elements']:
                                     current_message['rawMessage']['elements'][-1]['textElement']['atUid'] = value
         
-        print(f"✅ 成功加载 {len(result['messages'])} 条消息")
+        # 确保群名有值
+        chat_name = result['chatInfo'].get('name', '未知群聊')
+        if not chat_name:
+            chat_name = '未知群聊'
+            result['chatInfo']['name'] = chat_name
+            
+        print(f"✅ 成功加载 {len(result['messages'])} 条消息, 群聊: {chat_name}")
         return result
         
     except ImportError:
