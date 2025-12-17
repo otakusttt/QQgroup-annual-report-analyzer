@@ -372,3 +372,7 @@ QQgroup-annual-report-analyzer/
 - 请遵守相关法律法规和平台服务条款
 
 如有任何问题或建议，欢迎通过 GitHub Issues 联系我们。
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=QQgroup-annual-report-analyzer/QQgroup-annual-report-analyzer&type=date&legend=top-left)](https://www.star-history.com/#QQgroup-annual-report-analyzer/QQgroup-annual-report-analyzer&type=date&legend=top-left)
