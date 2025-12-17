@@ -42,7 +42,7 @@
     </div>
     
     <!-- 版权信息 -->
-    <footer class="copyright-footer">
+    <footer v-if="!isShareMode" class="copyright-footer">
       <div class="copyright-content">
         <p>
           <span>© 2025 QQ群年度报告分析器</span>
@@ -80,6 +80,11 @@ const currentReportId = ref('')
 const generatingImage = ref(false)
 const imageUrl = ref('')
 const imageError = ref('')
+
+// ========== 显示模式状态 ==========
+// 当 URL 上带有 ?mode=share 时，表示用于图片生成的分享模式，此时不显示页面底部的版权警告栏，
+// 避免截图时被截入图片导致布局异常
+const isShareMode = ref(false)
 
 // ========== 路由参数解析 ==========
 /**
@@ -234,6 +239,12 @@ const generateImage = async () => {
 // ========== 生命周期 ==========
 onMounted(async () => {
   const params = getRouteParams()
+
+  // 检查当前是否为分享模式（用于生成图片的专用模式）
+  const search = window.location.search || ''
+  const qs = new URLSearchParams(search)
+  isShareMode.value = (qs.get('mode') === 'share')
+
   if (params) {
     currentTemplateId.value = params.templateId
     currentReportId.value = params.reportId

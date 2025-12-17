@@ -20,7 +20,18 @@ REM 虚拟环境 Python / pip 路径（后面所有操作都用它）
 set "VENV_PYTHON=%ROOT_DIR%venv\Scripts\python.exe"
 set "VENV_PIP=%VENV_PYTHON% -m pip"
 
+REM 默认健康检查端口（与 backend/.env 中 FLASK_PORT 保持一致，默认 5000）
+set "HEALTH_PORT=5000"
+if exist "backend\.env" (
+  for /f "tokens=1,2 delims==" %%A in ('findstr /R /C:"^FLASK_PORT=" "backend\.env"') do (
+    if /I "%%A"=="FLASK_PORT" (
+      set "HEALTH_PORT=%%B"
+    )
+  )
+)
+
 echo 项目根目录：%ROOT_DIR%
+echo 健康检查端口：%HEALTH_PORT%
 echo.
 
 ::: 标记是否需要用户配置
@@ -264,8 +275,8 @@ echo    后端启动命令：%VENV_PYTHON% backend\app.py
 REM 在新 cmd 窗口中切到 backend 目录，使用相对路径调用 venv Python
 start "QQ群年度报告-后端" cmd /k "cd /d %ROOT_DIR%backend && ..\venv\Scripts\python.exe app.py"
 
-::: 等待后端完全启动（健康检查）
-echo 等待后端服务就绪...
+::: 等待后端完全启动（真实健康检查）
+echo 等待后端服务就绪（健康检查端口：%HEALTH_PORT%）...
 set RETRY_COUNT=0
 set MAX_RETRIES=30
 
@@ -273,20 +284,21 @@ set MAX_RETRIES=30
 set /a RETRY_COUNT+=1
 if %RETRY_COUNT% gtr %MAX_RETRIES% (
     echo.
-    echo ⚠️  警告：后端服务启动超时（已等待30秒）
-    echo    前端可能会出现连接错误
-    echo    请检查后端窗口是否有错误信息
+    echo ❌ 错误：后端服务启动超时（已等待30秒，一直无法通过健康检查）
+    echo    已尝试访问：http://localhost:%HEALTH_PORT%/api/health
+    echo    请检查后端窗口是否有错误信息，确认端口和配置是否正确
     echo.
-    goto start_frontend
+    pause
+    exit /b 1
 )
 
-powershell -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:5000/api/health' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
+powershell -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:%HEALTH_PORT%/api/health' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
 if errorlevel 1 (
     timeout /t 1 /nobreak >nul
     goto wait_backend
 )
 
-echo ✅ 后端服务已就绪（端口：5000）
+echo ✅ 后端服务已通过健康检查（端口：%HEALTH_PORT%）
 
 :start_frontend
 ::: 启动前端
