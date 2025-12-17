@@ -5,10 +5,28 @@ echo QQ群年度报告分析器 - 一键启动脚本
 echo ========================================
 echo.
 
-:: 标记是否需要用户配置
+REM ---------------------------------------------------------------------------
+REM 本脚本统一使用同一个虚拟环境 (venv) 的 Python 和 pip
+REM - 所有后端依赖安装都走 venv 里的 python -m pip
+REM - 启动后端也强制使用 venv\Scripts\python.exe
+REM - 避免「装在一处，用在另一处」导致的 No module named XXX
+REM ---------------------------------------------------------------------------
+
+REM 当前脚本所在目录（项目根目录）
+set "ROOT_DIR=%~dp0"
+cd /d "%ROOT_DIR%"
+
+REM 虚拟环境 Python / pip 路径（后面所有操作都用它）
+set "VENV_PYTHON=%ROOT_DIR%venv\Scripts\python.exe"
+set "VENV_PIP=%VENV_PYTHON% -m pip"
+
+echo 项目根目录：%ROOT_DIR%
+echo.
+
+::: 标记是否需要用户配置
 set NEED_CONFIG=0
 
-:: 检查Python
+::: 检查Python
 echo [1/9] 检查Python环境...
 python --version >nul 2>&1
 if errorlevel 1 (
@@ -19,7 +37,7 @@ if errorlevel 1 (
 )
 echo ✅ Python已安装
 
-:: 检查Node.js
+::: 检查Node.js
 echo.
 echo [2/9] 检查Node.js环境...
 node --version >nul 2>&1
@@ -31,7 +49,7 @@ if errorlevel 1 (
 )
 echo ✅ Node.js已安装
 
-:: 检查并配置后端.env文件
+::: 检查并配置后端.env文件
 echo.
 echo [3/9] 检查后端配置文件...
 if not exist "backend\.env" (
@@ -43,7 +61,7 @@ if not exist "backend\.env" (
     echo ✅ backend\.env 已存在
 )
 
-:: 检查并创建 config.py（命令行模式需要）
+::: 检查并创建 config.py（命令行模式需要）
 echo.
 echo [4/9] 检查命令行模式配置文件...
 if not exist "config.py" (
@@ -55,7 +73,7 @@ if not exist "config.py" (
     echo ✅ config.py 已存在
 )
 
-:: 如果需要配置，提示用户并退出
+::: 如果需要配置，提示用户并退出
 if %NEED_CONFIG%==1 (
     echo.
     echo ========================================
@@ -89,13 +107,15 @@ if %NEED_CONFIG%==1 (
     exit /b 0
 )
 
-:: 继续正常启动流程
+::: 继续正常启动流程
 echo.
 echo ✅ 配置文件检查完成，继续启动...
 
-:: 安装Python依赖
+::: 安装Python依赖（统一使用 venv）
 echo.
 echo [5/9] 安装Python依赖...
+
+REM 1）创建虚拟环境（如不存在）
 if not exist "venv" (
     echo 创建Python虚拟环境...
     python -m venv venv
@@ -106,117 +126,61 @@ if not exist "venv" (
     )
 )
 
-:: 激活虚拟环境并验证
-call venv\Scripts\activate.bat
-if errorlevel 1 (
-    echo ❌ 错误：虚拟环境激活失败
-    pause
-    exit /b 1
-)
-
-:: 设置虚拟环境中的 Python 和 pip 完整路径（确保使用虚拟环境）
-set VENV_PYTHON=%CD%\venv\Scripts\python.exe
-set VENV_PIP=%CD%\venv\Scripts\pip.exe
-
-:: 验证虚拟环境中的 Python 是否存在
+REM 2）确认虚拟环境 Python 存在
 if not exist "%VENV_PYTHON%" (
-    echo ❌ 错误：虚拟环境中的 Python 不存在：%VENV_PYTHON%
-    echo    请删除 venv 文件夹后重新运行脚本
+    echo ❌ 错误：未找到虚拟环境 Python：%VENV_PYTHON%
+    echo    请删除 venv 目录后重新运行本脚本
     pause
     exit /b 1
 )
 
-:: 验证虚拟环境中的 pip 是否存在
-if not exist "%VENV_PIP%" (
-    echo ❌ 错误：虚拟环境中的 pip 不存在：%VENV_PIP%
-    echo    请删除 venv 文件夹后重新运行脚本
-    pause
-    exit /b 1
-)
-
-:: 使用虚拟环境中的 Python 验证环境
-echo 验证虚拟环境完整性...
-"%VENV_PYTHON%" --version >nul 2>&1
+echo 使用虚拟环境 Python：%VENV_PYTHON%
+echo.
+echo 升级 pip / setuptools / wheel...
+"%VENV_PYTHON%" -m pip install --upgrade pip setuptools wheel
 if errorlevel 1 (
-    echo ❌ 错误：虚拟环境中的 Python 无法运行
-    pause
-    exit /b 1
+    echo ⚠️  升级 pip 失败（可以忽略），继续安装依赖...
 )
 
-:: 检查当前使用的 Python 是否在虚拟环境中
-for /f "tokens=*" %%i in ('where python 2^>nul') do set PYTHON_PATH=%%i
-if defined PYTHON_PATH (
-    echo %PYTHON_PATH% | findstr /i "venv" >nul
-    if errorlevel 1 (
-        echo ⚠️  警告：当前 python 命令可能不在虚拟环境中
-        echo    当前路径：%PYTHON_PATH%
-        echo    将强制使用虚拟环境中的 Python：%VENV_PYTHON%
-    )
-)
-
-echo ✅ 虚拟环境已激活并验证
-echo    虚拟环境 Python：%VENV_PYTHON%
-echo    虚拟环境 pip：%VENV_PIP%
-echo 安装后端依赖包（使用虚拟环境中的 pip）...
-"%VENV_PIP%" install -r backend\requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple >nul 2>&1
+REM 3）优先使用 requirements.txt 安装全部后端依赖
+echo 安装后端依赖（使用 backend\requirements.txt）...
+"%VENV_PYTHON%" -m pip install -r "%ROOT_DIR%backend\requirements.txt" -i https://pypi.tuna.tsinghua.edu.cn/simple
 if errorlevel 1 (
     echo ⚠️  使用清华源安装失败，尝试官方源...
-    "%VENV_PIP%" install -r backend\requirements.txt
-    if errorlevel 1 (
-        echo ⚠️  依赖安装失败，尝试分步安装（可能是 jieba_fast 编译失败）...
-        echo    1) 先安装核心依赖（不包含 jieba_fast）
-        "%VENV_PIP%" install flask flask-cors flask-limiter gunicorn jinja2 openai httpx playwright pymysql python-dotenv requests ijson
-        echo    2) 再尝试安装 jieba_fast（如果失败将自动回退 jieba）
-        "%VENV_PIP%" install jieba_fast -i https://pypi.tuna.tsinghua.edu.cn/simple >nul 2>&1
-        if errorlevel 1 (
-            echo    ⚠️  jieba_fast 安装失败，自动回退到 jieba（标准版）
-            "%VENV_PIP%" install jieba -i https://pypi.tuna.tsinghua.edu.cn/simple >nul 2>&1
-            if errorlevel 1 (
-                "%VENV_PIP%" install jieba
-            )
-        )
-    )
+    "%VENV_PYTHON%" -m pip install -r "%ROOT_DIR%backend\requirements.txt"
 )
 
-:: 验证关键依赖包是否已正确安装（使用虚拟环境中的 Python）
-echo 验证关键依赖包安装状态（使用虚拟环境中的 Python）...
-"%VENV_PYTHON%" -c "import flask; import requests; import jieba_fast" >nul 2>&1
+REM 4）如果依赖依然有问题，分步安装关键包，并对 jieba_fast 做回退
+echo 验证并补充关键依赖（flask / requests 等）...
+"%VENV_PYTHON%" -c "import flask, requests" >nul 2>&1
 if errorlevel 1 (
-    echo ⚠️  部分关键依赖包可能未正确安装，正在检查...
-    "%VENV_PYTHON%" -c "import flask" >nul 2>&1
-    if errorlevel 1 (
-        echo ❌ 错误：flask 未安装，正在安装...
-        "%VENV_PIP%" install flask flask-cors flask-limiter
-    )
-    "%VENV_PYTHON%" -c "import requests" >nul 2>&1
-    if errorlevel 1 (
-        echo ❌ 错误：requests 未安装，正在安装...
-        "%VENV_PIP%" install requests
-    )
-    "%VENV_PYTHON%" -c "import jieba_fast" >nul 2>&1
-    if errorlevel 1 (
-        echo ⚠️  jieba_fast 安装失败（可能需要 C++ 编译器）
-        echo    正在回退到 jieba（标准版本，功能相同但速度稍慢）...
-        "%VENV_PIP%" install jieba -i https://pypi.tuna.tsinghua.edu.cn/simple >nul 2>&1
-        if errorlevel 1 (
-            "%VENV_PIP%" install jieba
-        )
-        echo ✅ 已安装 jieba（标准版本）
-        echo.
-        echo 💡 提示：如果您想使用更快的 jieba_fast，可以：
-        echo    1. 安装 Visual C++ Build Tools（推荐）
-        echo       下载地址：https://visualstudio.microsoft.com/visual-cpp-build-tools/
-        echo       安装时选择 "C++ 生成工具" 工作负载
-        echo    2. 或者直接使用 jieba（已安装，功能相同）
-    ) else (
-        echo ✅ jieba_fast 安装成功（高性能版本）
-    )
-) else (
-    echo ✅ 关键依赖包验证通过（flask, requests, jieba_fast）
+    echo - 安装 Flask / requests 等核心依赖...
+    "%VENV_PYTHON%" -m pip install flask flask-cors flask-limiter gunicorn jinja2 requests python-dotenv ijson pymysql httpx openai
 )
-echo ✅ Python依赖安装完成
 
-:: 安装Playwright浏览器（确保在虚拟环境中）
+REM 5）单独处理分词库：优先 jieba_fast，失败则回退 jieba
+"%VENV_PYTHON%" -c "import jieba_fast" >nul 2>&1
+if errorlevel 1 (
+    echo - 尝试安装 jieba_fast（如失败将自动回退 jieba）...
+    "%VENV_PYTHON%" -m pip install jieba_fast -i https://pypi.tuna.tsinghua.edu.cn/simple >nul 2>&1
+    if errorlevel 1 (
+        echo   ⚠️  jieba_fast 安装失败，使用标准版 jieba 代替...
+        "%VENV_PYTHON%" -m pip install jieba
+    )
+)
+
+REM 6）最终检查 flask / requests 是否在 venv 中
+"%VENV_PYTHON%" -c "import flask, requests" >nul 2>&1
+if errorlevel 1 (
+    echo ❌ 错误：虚拟环境中缺少关键模块（flask 或 requests），请检查网络或手动执行：
+    echo    "%VENV_PYTHON%" -m pip install flask requests
+    pause
+    exit /b 1
+)
+
+echo ✅ Python 依赖安装并验证完成
+
+::: 安装Playwright浏览器（确保在虚拟环境中）
 echo.
 echo [6/9] 检查Playwright浏览器...
 "%VENV_PYTHON%" -c "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); p.chromium.launch(headless=True); p.stop()" >nul 2>&1
@@ -224,10 +188,9 @@ if errorlevel 1 (
     echo ⚠️  Playwright浏览器未安装，正在安装...
     echo    （首次运行需要下载约100MB，请耐心等待）
     echo    使用虚拟环境中的 Python：%VENV_PYTHON%
-    
-    :: 确保使用虚拟环境中的 Python 来运行 playwright
+
     "%VENV_PYTHON%" -m playwright install chromium
-    
+
     if errorlevel 1 (
         echo.
         echo ⚠️  Playwright浏览器安装失败
@@ -241,10 +204,10 @@ if errorlevel 1 (
     echo ✅ Playwright浏览器已就绪
 )
 
-:: 安装前端依赖
+::: 安装前端依赖
 echo.
 echo [7/9] 安装前端依赖...
-cd frontend
+cd "%ROOT_DIR%frontend"
 if not exist "node_modules" (
     echo 安装前端依赖包（这可能需要几分钟）...
     call npm install
@@ -259,10 +222,10 @@ if not exist "node_modules" (
 ) else (
     echo ✅ 前端依赖已安装
 )
-cd ..
+cd "%ROOT_DIR%"
 echo ✅ 前端依赖就绪
 
-:: 检查存储模式并初始化（自动检测是否已初始化）
+::: 检查存储模式并初始化（自动检测是否已初始化）
 echo.
 echo [8/9] 初始化存储...
 findstr /C:"STORAGE_MODE=mysql" backend\.env >nul 2>&1
@@ -273,8 +236,8 @@ if errorlevel 1 (
     echo 检测到MySQL存储模式
     echo ⚠️  请确保MySQL服务已启动！
     echo.
-    echo 正在检测并初始化MySQL数据库（如需强制重置，请手动运行 "%VENV_PYTHON% backend/init_db.py --force"）...
-    "%VENV_PYTHON%" backend\init_db.py
+    echo 正在检测并初始化MySQL数据库（如需强制重置，请手动运行 "%VENV_PYTHON% backend\init_db.py --force"）...
+    "%VENV_PYTHON%" "%ROOT_DIR%backend\init_db.py"
     if errorlevel 1 (
         echo.
         echo ⚠️  MySQL初始化失败！
@@ -291,25 +254,16 @@ if errorlevel 1 (
     )
 )
 
-:: 启动后端（使用虚拟环境中的 Python 完整路径）
+::: 启动后端（使用虚拟环境中的 Python 完整路径）
 echo.
 echo [9/9] 启动服务...
 echo 正在启动后端服务...
 echo    使用虚拟环境 Python：%VENV_PYTHON%
 echo    后端启动命令：%VENV_PYTHON% backend\app.py
 
-:: 验证后端启动所需的模块是否在虚拟环境中
-"%VENV_PYTHON%" -c "import flask; import requests" >nul 2>&1
-if errorlevel 1 (
-    echo ❌ 错误：虚拟环境中缺少关键模块（flask 或 requests）
-    echo    请检查依赖安装是否成功
-    pause
-    exit /b 1
-)
+start "QQ群年度报告-后端" cmd /k "cd /d %ROOT_DIR%backend && \"%VENV_PYTHON%\" app.py"
 
-start "QQ群年度报告-后端" cmd /k "cd /d %CD% && %VENV_PYTHON% backend\app.py"
-
-:: 等待后端完全启动（健康检查）
+::: 等待后端完全启动（健康检查）
 echo 等待后端服务就绪...
 set RETRY_COUNT=0
 set MAX_RETRIES=30
@@ -325,7 +279,6 @@ if %RETRY_COUNT% gtr %MAX_RETRIES% (
     goto start_frontend
 )
 
-:: 使用PowerShell检查后端健康状态（兼容性更好）
 powershell -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:5000/api/health' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; exit 0 } catch { exit 1 }" >nul 2>&1
 if errorlevel 1 (
     timeout /t 1 /nobreak >nul
@@ -335,9 +288,9 @@ if errorlevel 1 (
 echo ✅ 后端服务已就绪（端口：5000）
 
 :start_frontend
-:: 启动前端
+::: 启动前端
 echo 正在启动前端服务...
-start "QQ群年度报告-前端" cmd /k "cd /d %CD%\frontend && npm run dev"
+start "QQ群年度报告-前端" cmd /k "cd /d %ROOT_DIR%frontend && npm run dev"
 timeout /t 3 /nobreak >nul
 echo ✅ 前端服务已启动（端口：5173）
 

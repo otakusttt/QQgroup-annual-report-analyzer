@@ -359,7 +359,7 @@ def upload_and_analyze():
         report = analyzer.export_json()
 
         all_words = report.get('topWords', [])[:100]
-        
+
         # 确保有足够的词汇
         if len(all_words) == 0:
             logger.error("❌ 分析结果中没有找到任何热词")
@@ -370,31 +370,31 @@ def upload_and_analyze():
             logger.info("✅ 进入自动选词模式")
             # 自动选词模式：根据AI功能是否开启选择不同的选词方式
             if AI_WORD_SELECTION_ENABLED:
-                logger.info("🤖 启动AI智能选词...")
-                ai_selector = AIWordSelector()
+            logger.info("🤖 启动AI智能选词...")
+            ai_selector = AIWordSelector()
 
-                if ai_selector.client:
-                    selected_word_objects = ai_selector.select_words(all_words, top_n=200)
+            if ai_selector.client:
+                selected_word_objects = ai_selector.select_words(all_words, top_n=200)
 
-                    if selected_word_objects:
-                        # 按词频从高到低排序
-                        selected_word_objects_sorted = sorted(
-                            selected_word_objects,
-                            key=lambda w: w['freq'],
-                            reverse=True
-                        )
+                if selected_word_objects:
+                    # 按词频从高到低排序
+                    selected_word_objects_sorted = sorted(
+                        selected_word_objects,
+                        key=lambda w: w['freq'],
+                        reverse=True
+                    )
                         selected_words = [w['word'] for w in selected_word_objects_sorted[:10]]
                         # 如果AI选词少于10个，用前10个热词补齐
                         if len(selected_words) < 10:
                             logger.warning(f"AI选词只有{len(selected_words)}个，用前10个热词补齐")
                             selected_words = [w['word'] for w in all_words[:10]]
-                        logger.info(f"✅ AI选词成功（已按词频排序）: {', '.join(selected_words)}")
-                    else:
-                        logger.warning("AI选词失败，使用前10个热词")
-                        selected_words = [w['word'] for w in all_words[:10]]
+                    logger.info(f"✅ AI选词成功（已按词频排序）: {', '.join(selected_words)}")
                 else:
-                    logger.warning("OpenAI未配置，使用前10个热词")
+                    logger.warning("AI选词失败，使用前10个热词")
                     selected_words = [w['word'] for w in all_words[:10]]
+            else:
+                logger.warning("OpenAI未配置，使用前10个热词")
+                selected_words = [w['word'] for w in all_words[:10]]
             else:
                 # AI功能未开启，直接使用前10个热词
                 logger.info("📋 使用默认前10个热词（AI功能未开启）")

@@ -360,7 +360,7 @@
                 v-model="personalStartDate" 
                 placeholder="留空表示不限制"
               />
-            </div>
+    </div>
             <div class="time-input-group">
               <label>结束日期：</label>
               <input 
@@ -773,8 +773,8 @@ const uploadAndAnalyze = async () => {
     // 检查返回数据是否包含 success 字段（自动选词模式）或 available_words 字段（手动选词模式）
     if (autoSelect.value && data.success) {
       console.log('✅ 进入自动选词完成流程')
-      finalResult.value = data
-      // 加载AI评论
+    finalResult.value = data
+    // 加载AI评论
       try {
         const detailRes = await axios.get(`${API_BASE}/reports/${data.report_id}`)
         aiComments.value = detailRes.data.ai_comments || {}
@@ -892,7 +892,7 @@ const loadReports = async (page = 1) => {
     const params = { page, page_size: 20 }
     if (searchQuery.value) {
       if (reportType.value === 'group') {
-        params.chat_name = searchQuery.value
+      params.chat_name = searchQuery.value
       } else {
         // 个人报告可以搜索群聊名称或用户名称
         params.chat_name = searchQuery.value
