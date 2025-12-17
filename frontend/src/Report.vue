@@ -40,6 +40,22 @@
       </div>
       <button @click="loadReport">重新加载</button>
     </div>
+    
+    <!-- 版权信息 -->
+    <footer class="copyright-footer">
+      <div class="copyright-content">
+        <p>
+          <span>© 2025 QQ群年度报告分析器</span>
+          <span class="separator">|</span>
+          <span>作者：<a href="https://github.com/ZiHuixi" target="_blank">Huixi</a> & <a href="https://github.com/yujingkun1" target="_blank">Jingkun</a></span>
+          <span class="separator">|</span>
+          <span>开源协议：<a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank">AGPL-3.0</a></span>
+        </p>
+        <p class="copyright-warning">
+          ⚠️ 本软件为开源软件，<strong>严禁用于任何商业用途</strong>。仅供个人学习、研究和非商业用途使用。
+        </p>
+      </div>
+    </footer>
   </div>
 </template>
 
@@ -343,5 +359,57 @@ onMounted(async () => {
 
 .error-container button:active, .template-error-container button:active {
   transform: translateY(0);
+}
+
+/* 版权信息样式 */
+.copyright-footer {
+  margin-top: 40px;
+  padding: 20px;
+  background: #f5f5f7;
+  border-top: 1px solid #e5e5e7;
+  text-align: center;
+}
+
+.copyright-content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.copyright-content p {
+  margin: 8px 0;
+  font-size: 12px;
+  color: #6e6e73;
+  line-height: 1.6;
+}
+
+.copyright-content a {
+  color: #007aff;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.copyright-content a:hover {
+  color: #0051d5;
+  text-decoration: underline;
+}
+
+.separator {
+  margin: 0 10px;
+  color: #d2d2d7;
+}
+
+.copyright-warning {
+  margin-top: 10px !important;
+  padding: 10px 16px;
+  background: #fff3cd;
+  border-left: 3px solid #ffc107;
+  border-radius: 6px;
+  color: #856404;
+  font-size: 11px;
+}
+
+.copyright-warning strong {
+  color: #d32f2f;
+  font-weight: 600;
 }
 </style>
