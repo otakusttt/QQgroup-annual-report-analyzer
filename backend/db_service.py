@@ -260,6 +260,84 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+    def list_personal_reports(self, page: int = 1, page_size: int = 20,
+                             chat_name: Optional[str] = None, 
+                             user_name: Optional[str] = None,
+                             user_id: Optional[str] = None) -> Dict[str, Any]:
+        """查询个人报告列表"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor(pymysql.cursors.DictCursor)
+            
+            where_conditions = []
+            params = []
+            
+            if user_id:
+                where_conditions.append("user_id = %s")
+                params.append(user_id)
+            
+            if chat_name:
+                where_conditions.append("chat_name LIKE %s")
+                params.append(f"%{chat_name}%")
+            
+            if user_name:
+                where_conditions.append("user_name LIKE %s")
+                params.append(f"%{user_name}%")
+            
+            where_clause = ""
+            if where_conditions:
+                where_clause = "WHERE " + " AND ".join(where_conditions)
+            
+            count_sql = f"SELECT COUNT(*) as total FROM personal_reports {where_clause}"
+            cursor.execute(count_sql, params)
+            total = cursor.fetchone()['total']
+            
+            offset = (page - 1) * page_size
+            data_sql = f"""
+                SELECT report_id, user_name, chat_name, total_messages, 
+                       created_at, updated_at
+                FROM personal_reports 
+                {where_clause}
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+            """
+            cursor.execute(data_sql, params + [page_size, offset])
+            data = cursor.fetchall()
+            
+            return {
+                'data': data,
+                'total': total,
+                'page': page,
+                'page_size': page_size
+            }
+        except Exception as e:
+            logger.error(f"查询个人报告列表失败: {e}")
+            return {'data': [], 'total': 0, 'page': page, 'page_size': page_size}
+        finally:
+            if conn:
+                conn.close()
+    
+    def delete_personal_report(self, report_id: str) -> bool:
+        """删除个人报告"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            sql = "DELETE FROM personal_reports WHERE report_id = %s"
+            cursor.execute(sql, (report_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"删除个人报告失败: {e}")
+            if conn:
+                conn.rollback()
+            return False
+        finally:
+            if conn:
+                conn.close()
+    
     def delete_report(self, report_id: str) -> bool:
         conn = None
         try:

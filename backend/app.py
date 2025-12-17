@@ -692,6 +692,29 @@ def list_reports():
         return jsonify({"error": f"查询失败: {exc}"}), 500
 
 
+@app.route("/api/personal-reports", methods=["GET"])
+@limiter.limit(RATE_LIMIT_LIST_REPORTS if SECURITY_ENABLED and RATE_LIMIT_LIST_REPORTS else "1000000 per hour")
+def list_personal_reports():
+    """查询个人报告列表"""
+    if not db_service:
+        return jsonify({"error": "数据库服务未初始化"}), 500
+    
+    user_id = get_or_create_user_id()
+    
+    page = int(request.args.get('page', 1))
+    page_size = int(request.args.get('page_size', 20))
+    chat_name = request.args.get('chat_name')
+    user_name = request.args.get('user_name')
+    
+    try:
+        result = db_service.list_personal_reports(page, page_size, chat_name, user_name, user_id=user_id)
+        return jsonify(result)
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"查询失败: {exc}"}), 500
+
+
 @app.route("/api/templates", methods=["GET"])
 def get_templates():
     import json
@@ -726,7 +749,23 @@ def get_personal_report_api(report_id):
         if not personal_report:
             return jsonify({"error": "个人报告不存在"}), 404
         
-        report_data = personal_report.get('report_data', {})
+        # 处理不同存储方式返回的数据格式
+        # 数据库方式：返回的字典包含 report_data 字段
+        # JSON文件方式：返回的字典直接包含报告数据
+        if isinstance(personal_report, dict):
+            if 'report_data' in personal_report:
+                # 数据库存储方式
+                report_data = personal_report['report_data']
+                # 如果report_data是字符串，需要解析JSON
+                if isinstance(report_data, str):
+                    report_data = json.loads(report_data)
+            else:
+                # JSON文件存储方式，直接使用整个字典作为报告数据
+                report_data = personal_report
+        else:
+            report_data = personal_report
+        
+        # 确保返回的是完整的报告数据
         return jsonify(report_data)
     except Exception as exc:
         import traceback
@@ -836,6 +875,36 @@ def delete_report(report_id):
         
         logger.info(f"✅ 报告已删除: {report_id} (用户: {user_id})")
         return jsonify({"success": True, "message": "报告已删除"})
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"删除失败: {exc}"}), 500
+
+
+@app.route("/api/personal-reports/<report_id>", methods=["DELETE"])
+@limiter.limit(RATE_LIMIT_DELETE_REPORT if SECURITY_ENABLED and RATE_LIMIT_DELETE_REPORT else "1000000 per hour")
+def delete_personal_report(report_id):
+    """删除个人报告"""
+    if not db_service:
+        return jsonify({"error": "数据库服务未初始化"}), 500
+    
+    user_id = get_or_create_user_id()
+    
+    try:
+        report = db_service.get_personal_report(report_id)
+        if not report:
+            return jsonify({"error": "个人报告不存在"}), 404
+        
+        if report.get('user_id') != user_id:
+            logger.warning(f"⚠️ 权限拒绝: 用户 {user_id} 尝试删除个人报告 {report_id} (所有者: {report.get('user_id')})")
+            return jsonify({"error": "无权限删除此报告"}), 403
+        
+        success = db_service.delete_personal_report(report_id)
+        if not success:
+            return jsonify({"error": "删除失败"}), 500
+        
+        logger.info(f"✅ 个人报告已删除: {report_id} (用户: {user_id})")
+        return jsonify({"success": True, "message": "个人报告已删除"})
     except Exception as exc:
         import traceback
         traceback.print_exc()

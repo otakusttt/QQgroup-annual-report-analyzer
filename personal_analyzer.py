@@ -21,11 +21,22 @@ _STOPWORDS_CACHE = None
 def load_stopwords_for_personal():
     """加载停用词（不依赖config）"""
     global _STOPWORDS_CACHE
+    # 如果已经加载过，直接返回缓存
     if _STOPWORDS_CACHE is not None:
+        logger.debug(f"📚 使用缓存的停用词 {len(_STOPWORDS_CACHE)} 个")
         return _STOPWORDS_CACHE
     
     base_dir = os.path.dirname(__file__)
+    # 支持多种路径，包括项目根目录
+    # 如果personal_analyzer.py在项目根目录，base_dir就是项目根目录
+    # 如果personal_analyzer.py在backend目录，需要向上找一级
+    if os.path.basename(base_dir) == 'backend':
+        project_root = os.path.dirname(base_dir)
+    else:
+        project_root = base_dir
+    
     candidate_paths = [
+        os.path.join(project_root, 'resources', 'baidu_stopwords.txt'),
         os.path.join(base_dir, 'resources', 'baidu_stopwords.txt'),
         os.path.join(base_dir, 'backend', 'resources', 'baidu_stopwords.txt'),
     ]
@@ -37,7 +48,7 @@ def load_stopwords_for_personal():
             break
     
     if not stopwords_path:
-        logger.warning(f"停用词文件不存在于任何候选路径: {candidate_paths}")
+        logger.warning(f"⚠️ 停用词文件不存在于任何候选路径: {candidate_paths}")
         _STOPWORDS_CACHE = set()
         return _STOPWORDS_CACHE
     
@@ -45,7 +56,7 @@ def load_stopwords_for_personal():
         with open(stopwords_path, 'r', encoding='utf-8') as f:
             words = {line.strip() for line in f if line.strip() and not line.startswith('#')}
         _STOPWORDS_CACHE = words
-        logger.info(f"📚 已加载停用词 {len(words)} 个 from {stopwords_path}")
+        logger.info(f"📚 已加载个人报告停用词 {len(words)} 个 from {os.path.basename(stopwords_path)}")
         return _STOPWORDS_CACHE
     except Exception as e:
         logger.error(f"❌ 加载停用词文件失败: {e}")
@@ -70,7 +81,12 @@ class PersonalAnalyzer:
         self.chat_name = data.get('chatName', data.get('chatInfo', {}).get('name', '未知群聊'))
         self.target_name = target_name
         self.use_stopwords = use_stopwords
-        self.stopwords = load_stopwords_for_personal() if use_stopwords else set()
+        if use_stopwords:
+            self.stopwords = load_stopwords_for_personal()
+            logger.info(f"✅ 个人报告停用词功能已启用，已加载 {len(self.stopwords)} 个停用词")
+        else:
+            self.stopwords = set()
+            logger.info("📚 个人报告停用词功能已禁用")
         
         # 构建用户映射
         self._build_user_mapping()
@@ -472,9 +488,12 @@ class PersonalAnalyzer:
         if self.at_by:
             most_at_by_uin, most_at_by_count = self.at_by.most_common(1)[0]
         
-        # Top N 高频词
+        # Top N 高频词（再次过滤停用词，确保报告中不包含停用词）
         top_words = []
         for word, freq in self.word_freq.most_common(20):
+            # 如果启用了停用词，再次过滤
+            if self.use_stopwords and word in self.stopwords:
+                continue
             top_words.append({
                 'word': word,
                 'freq': freq,

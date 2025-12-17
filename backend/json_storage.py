@@ -172,6 +172,71 @@ class JSONStorageService:
             logger.error(f"❌ 获取个人报告失败: {e}")
             return None
     
+    def list_personal_reports(self, page: int = 1, page_size: int = 20,
+                             chat_name: Optional[str] = None,
+                             user_name: Optional[str] = None,
+                             user_id: Optional[str] = None) -> Dict[str, Any]:
+        """查询个人报告列表"""
+        try:
+            personal_dir = self.storage_dir / "personal_reports"
+            if not personal_dir.exists():
+                return {'data': [], 'total': 0, 'page': page, 'page_size': page_size}
+            
+            all_reports = []
+            for report_file in personal_dir.glob("*.json"):
+                try:
+                    data = json.loads(report_file.read_text(encoding='utf-8'))
+                    
+                    # 过滤条件
+                    if user_id and data.get('user_id') != user_id:
+                        continue
+                    if chat_name and chat_name.lower() not in data.get('chat_name', '').lower():
+                        continue
+                    if user_name and user_name.lower() not in data.get('user_name', '').lower():
+                        continue
+                    
+                    all_reports.append({
+                        'report_id': data.get('report_id'),
+                        'user_name': data.get('user_name'),
+                        'chat_name': data.get('chat_name'),
+                        'total_messages': data.get('report_data', {}).get('total_messages', 0),
+                        'created_at': data.get('created_at'),
+                        'updated_at': data.get('updated_at')
+                    })
+                except Exception as e:
+                    logger.warning(f"读取个人报告文件失败: {report_file}, {e}")
+            
+            # 按创建时间排序
+            all_reports.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+            
+            total = len(all_reports)
+            start = (page - 1) * page_size
+            end = start + page_size
+            data = all_reports[start:end]
+            
+            return {
+                'data': data,
+                'total': total,
+                'page': page,
+                'page_size': page_size
+            }
+        except Exception as e:
+            logger.error(f"❌ 查询个人报告列表失败: {e}")
+            return {'data': [], 'total': 0, 'page': page, 'page_size': page_size}
+    
+    def delete_personal_report(self, report_id: str) -> bool:
+        """删除个人报告"""
+        try:
+            personal_dir = self.storage_dir / "personal_reports"
+            report_file = personal_dir / f"{report_id}.json"
+            if report_file.exists():
+                report_file.unlink()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"❌ 删除个人报告失败: {e}")
+            return False
+    
     def list_reports(self, page: int = 1, page_size: int = 20, 
                     chat_name: Optional[str] = None, user_id: Optional[str] = None) -> Dict[str, Any]:
         try:

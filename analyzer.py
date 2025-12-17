@@ -29,20 +29,44 @@ _DIGIT_SYMBOL_PATTERN = re.compile(r'^[\d\W]+$')
 _URL_PATTERN = re.compile(r'https?://')
 _SENTENCE_SPLIT_PATTERN = re.compile(r'[，。！？、；：""''（）\s\n\r,\.!?\(\)]')
 
-def load_stopwords():
+def load_stopwords(force_enable=None):
+    """
+    加载停用词
+    
+    Args:
+        force_enable: 如果为True，强制加载停用词；如果为False，强制不加载；如果为None，使用配置文件的值
+    """
     global _STOPWORDS_CACHE
-    if _STOPWORDS_CACHE is not None:
+    
+    # 如果强制禁用，直接返回空集合
+    if force_enable is False:
+        return set()
+    
+    # 如果缓存已存在且不是强制启用，直接返回缓存
+    if _STOPWORDS_CACHE is not None and force_enable is not True:
         return _STOPWORDS_CACHE
-
-    if not cfg.USE_STOPWORDS:
-        logger.info("📚 停用词功能已禁用 (USE_STOPWORDS=False)")
+    
+    # 决定是否启用停用词
+    if force_enable is True:
+        use_stopwords = True
+    else:
+        # 安全获取USE_STOPWORDS，如果不存在则默认为False
+        use_stopwords = getattr(cfg, 'USE_STOPWORDS', False)
+    
+    if not use_stopwords:
+        logger.info("📚 停用词功能已禁用")
         _STOPWORDS_CACHE = set()
         return _STOPWORDS_CACHE
     
     stopwords = set()
     
     base_dir = os.path.dirname(__file__)
-    candidate_paths = [os.path.join(base_dir, path) for path in cfg.STOPWORDS_PATHS]
+    # 安全获取STOPWORDS_PATHS，如果不存在则使用默认路径
+    stopwords_paths = getattr(cfg, 'STOPWORDS_PATHS', [
+        'resources/baidu_stopwords.txt',
+        'backend/resources/baidu_stopwords.txt'
+    ])
+    candidate_paths = [os.path.join(base_dir, path) for path in stopwords_paths]
     
     stopwords_path = None
     for p in candidate_paths:
@@ -62,7 +86,8 @@ def load_stopwords():
         except Exception as e:
             logger.error(f"❌ 加载停用词文件失败: {e}")
     else:
-        if cfg.STOPWORDS_WARN_IF_MISSING:
+        warn_if_missing = getattr(cfg, 'STOPWORDS_WARN_IF_MISSING', True)
+        if warn_if_missing:
             logger.warning(f"⚠️  停用词文件不存在，尝试路径: {candidate_paths}")
     
     manual_words = set(cfg.STOPWORDS_MANUAL) if hasattr(cfg, 'STOPWORDS_MANUAL') else set()
@@ -80,13 +105,23 @@ def load_stopwords():
 
 
 class ChatAnalyzer:
-    def __init__(self, data):
+    def __init__(self, data, use_stopwords=None):
         self.data = data
         self.messages = data.get('messages', [])
         self.chat_name = data.get('chatName', data.get('chatInfo', {}).get('name', '未知群聊'))
 
-        self.use_stopwords = cfg.USE_STOPWORDS
-        self.stopwords = load_stopwords() if self.use_stopwords else set()
+        # 如果传入了use_stopwords参数，使用传入的值；否则使用配置文件的值
+        if use_stopwords is not None:
+            self.use_stopwords = use_stopwords
+        else:
+            # 安全获取USE_STOPWORDS，如果不存在则默认为False
+            self.use_stopwords = getattr(cfg, 'USE_STOPWORDS', False)
+        
+        # 根据use_stopwords参数决定是否加载停用词
+        if self.use_stopwords:
+            self.stopwords = load_stopwords(force_enable=True)
+        else:
+            self.stopwords = set()
         
         self._filter_messages_and_build_mappings()
         self.word_freq = Counter()
@@ -118,30 +153,34 @@ class ChatAnalyzer:
         合并时间过滤和构建 uin 到 name 及 msgid_to_sender 的映射，
         减少两次遍历带来的性能开销
         """
-        if cfg.MESSAGE_START_DATE is None and cfg.MESSAGE_END_DATE is None:
+        # 安全获取时间过滤配置
+        message_start_date = getattr(cfg, 'MESSAGE_START_DATE', None)
+        message_end_date = getattr(cfg, 'MESSAGE_END_DATE', None)
+        
+        if message_start_date is None and message_end_date is None:
             filtered_messages = self.messages
         else:
             from datetime import datetime
             start_dt = None
             end_dt = None
             
-            if cfg.MESSAGE_START_DATE:
+            if message_start_date:
                 try:
-                    start_dt = datetime.strptime(cfg.MESSAGE_START_DATE, '%Y-%m-%d')
+                    start_dt = datetime.strptime(message_start_date, '%Y-%m-%d')
                     start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
                     from datetime import timezone, timedelta
                     start_dt = start_dt.replace(tzinfo=timezone(timedelta(hours=8)))
                 except Exception as e:
-                    logger.warning(f"起始日期格式错误: {cfg.MESSAGE_START_DATE}, 错误: {e}")
+                    logger.warning(f"起始日期格式错误: {message_start_date}, 错误: {e}")
             
-            if cfg.MESSAGE_END_DATE:
+            if message_end_date:
                 try:
-                    end_dt = datetime.strptime(cfg.MESSAGE_END_DATE, '%Y-%m-%d')
+                    end_dt = datetime.strptime(message_end_date, '%Y-%m-%d')
                     end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
                     from datetime import timezone, timedelta
                     end_dt = end_dt.replace(tzinfo=timezone(timedelta(hours=8)))
                 except Exception as e:
-                    logger.warning(f"结束日期格式错误: {cfg.MESSAGE_END_DATE}, 错误: {e}")
+                    logger.warning(f"结束日期格式错误: {message_end_date}, 错误: {e}")
             
             filtered_messages = []
             for msg in self.messages:
@@ -160,9 +199,9 @@ class ChatAnalyzer:
             if start_dt or end_dt:
                 time_range = []
                 if start_dt:
-                    time_range.append(f"从 {cfg.MESSAGE_START_DATE}")
+                    time_range.append(f"从 {message_start_date}")
                 if end_dt:
-                    time_range.append(f"到 {cfg.MESSAGE_END_DATE}")
+                    time_range.append(f"到 {message_end_date}")
                 logger.info(f"⏰ 时间范围过滤: {' '.join(time_range)}")
                 logger.info(f"   原始消息: {original_count} 条, 过滤后: {filtered_count} 条")
 
@@ -221,7 +260,9 @@ class ChatAnalyzer:
 
     def _is_bot_message(self, msg):
         """判断是否为机器人消息（基于 subMsgType 或 配置的机器人UIN）"""
-        if not cfg.FILTER_BOT_MESSAGES:
+        # 安全获取FILTER_BOT_MESSAGES，如果不存在则默认为True
+        filter_bot = getattr(cfg, 'FILTER_BOT_MESSAGES', True)
+        if not filter_bot:
             return False
         
         raw_msg = msg.get('rawMessage', {})
@@ -229,9 +270,11 @@ class ChatAnalyzer:
         if sub_msg_type in [577, 65]:
             return True
         
-        if cfg.BOT_UINS:
+        # 安全获取BOT_UINS，如果不存在则默认为空列表
+        bot_uins = getattr(cfg, 'BOT_UINS', [])
+        if bot_uins:
             sender_uin = msg.get('sender', {}).get('uin')
-            if sender_uin and str(sender_uin) in [str(uin) for uin in cfg.BOT_UINS]:
+            if sender_uin and str(sender_uin) in [str(uin) for uin in bot_uins]:
                 return True
         
         return False
@@ -332,7 +375,8 @@ class ChatAnalyzer:
                     self.word_freq[word] += 1
                     if sender_uin:
                         self.word_contributors[word][sender_uin] += 1
-                    if len(self.word_samples[word]) < cfg.SAMPLE_COUNT * 3:
+                    sample_count = getattr(cfg, 'SAMPLE_COUNT', 10)
+                    if len(self.word_samples[word]) < sample_count * 3:
                         self.word_samples[word].append(cleaned)
 
                 self.user_msg_count[sender_uin] += 1
@@ -424,9 +468,12 @@ class ChatAnalyzer:
             hour = parse_timestamp(msg.get('timestamp', ''))
             if hour is not None:
                 self.hour_distribution[hour] += 1
-                if hour in cfg.NIGHT_OWL_HOURS:
+                # 安全获取时间范围配置
+                night_owl_hours = getattr(cfg, 'NIGHT_OWL_HOURS', range(0, 6))
+                early_bird_hours = getattr(cfg, 'EARLY_BIRD_HOURS', range(6, 9))
+                if hour in night_owl_hours:
                     self.user_night_count[sender_uin] += 1
-                if hour in cfg.EARLY_BIRD_HOURS:
+                if hour in early_bird_hours:
                     self.user_morning_count[sender_uin] += 1
             
             if cleaned and len(cleaned) >= 2:
@@ -622,8 +669,9 @@ class ChatAnalyzer:
         # 采样
         for word in self.word_samples:
             samples = self.word_samples[word]
-            if len(samples) > cfg.SAMPLE_COUNT:
-                self.word_samples[word] = random.sample(samples, cfg.SAMPLE_COUNT)
+            sample_count = getattr(cfg, 'SAMPLE_COUNT', 10)
+            if len(samples) > sample_count:
+                self.word_samples[word] = random.sample(samples, sample_count)
         
         logger.debug(f"过滤后 {len(self.word_freq)} 个词")
 
@@ -684,7 +732,7 @@ class ChatAnalyzer:
                     }
                     for uin, count in self.word_contributors[word].most_common(cfg.CONTRIBUTOR_TOP_N)
                 ],
-                'samples': self.word_samples.get(word, [])[:cfg.SAMPLE_COUNT]
+                'samples': self.word_samples.get(word, [])[:getattr(cfg, 'SAMPLE_COUNT', 10)]
             })
 
         result = {

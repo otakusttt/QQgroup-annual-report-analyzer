@@ -74,7 +74,7 @@
             <input type="checkbox" v-model="useStopwords" />
             <div>
               <strong>使用停用词库（百度）</strong>
-              <p style="margin: 6px 0 0 0; color: #6e6e73;">过滤语气词、助词等常见停用词，减少噪声</p>
+              <p style="margin: 6px 0 0 0; color: #6e6e73;">开启后可屏蔽常用停用词，使分词更有意义，但会屏蔽掉一些可能出现的有意思的词</p>
             </div>
           </label>
         </div>
@@ -251,10 +251,27 @@
       <div class="card">
         <h2>历史报告</h2>
         
+        <!-- 报告类型切换 -->
+        <div class="report-type-toggle" style="margin-bottom: 20px;">
+          <button 
+            :class="['tab', { active: reportType === 'group' }]" 
+            @click="reportType = 'group'; loadReports()"
+            style="margin-right: 10px;"
+          >
+            群聊报告
+          </button>
+          <button 
+            :class="['tab', { active: reportType === 'personal' }]" 
+            @click="reportType = 'personal'; loadReports()"
+          >
+            个人报告
+          </button>
+        </div>
+        
         <div class="search-box">
           <input 
             v-model="searchQuery" 
-            placeholder="搜索群聊名称..." 
+            :placeholder="reportType === 'group' ? '搜索群聊名称...' : '搜索群聊名称或用户名称...'" 
             @keyup.enter="loadReports()"
           />
           <button @click="loadReports()">搜索</button>
@@ -263,7 +280,8 @@
         <div v-if="loadingReports" class="loading">加载中...</div>
 
         <div v-else-if="reports.data && reports.data.length > 0" class="reports-list">
-          <div v-for="report in reports.data" :key="report.id" class="report-item">
+          <!-- 群聊报告 -->
+          <div v-if="reportType === 'group'" v-for="report in reports.data" :key="report.id || report.report_id" class="report-item">
             <div class="report-header">
               <h3>{{ report.chat_name }}</h3>
               <span class="report-date">{{ formatDate(report.created_at) }}</span>
@@ -279,6 +297,26 @@
               <button @click="openReport(report.report_id)" class="primary">查看报告</button>
               <button @click="copyReportUrl(report.report_id)">复制链接</button>
               <button @click="deleteReport(report.report_id)" class="danger">删除</button>
+            </div>
+          </div>
+          
+          <!-- 个人报告 -->
+          <div v-else v-for="report in reports.data" :key="report.report_id" class="report-item">
+            <div class="report-header">
+              <h3>{{ report.user_name }} - {{ report.chat_name }}</h3>
+              <span class="report-date">{{ formatDate(report.created_at) }}</span>
+            </div>
+            <div class="report-info">
+              <span class="badge">消息数：{{ report.total_messages }}</span>
+              <span class="badge">报告ID：{{ report.report_id }}</span>
+            </div>
+            <div class="report-url">
+              <code>{{ getPersonalReportUrl(report.report_id) }}</code>
+            </div>
+            <div class="report-actions">
+              <button @click="openPersonalReport(report.report_id)" class="primary">查看报告</button>
+              <button @click="copyPersonalReportUrl(report.report_id)">复制链接</button>
+              <button @click="deletePersonalReport(report.report_id)" class="danger">删除</button>
             </div>
           </div>
 
@@ -339,7 +377,7 @@
             <input type="checkbox" v-model="personalUseStopwords" />
             <div>
               <strong>使用停用词库（百度）</strong>
-              <p style="margin: 6px 0 0 0; color: #6e6e73;">过滤语气词、助词等常见停用词，减少噪声</p>
+              <p style="margin: 6px 0 0 0; color: #6e6e73;">开启后可屏蔽常用停用词，使分词更有意义，但会屏蔽掉一些可能出现的有意思的词</p>
             </div>
           </label>
         </div>
@@ -388,10 +426,10 @@
                 {{ getPersonalReportUrl() }}
               </div>
               <div class="flex" style="margin-top: 15px; gap: 10px;">
-                <button @click="openPersonalReport" class="primary">
+                <button @click="openPersonalReport(personalReport.report_id)" class="primary">
                   🔗 立即查看报告
                 </button>
-                <button @click="copyPersonalReportUrl">
+                <button @click="copyPersonalReportUrl(personalReport.report_id)">
                   📋 复制链接
                 </button>
               </div>
@@ -524,6 +562,7 @@ const totalWordPages = computed(() => {
 // 历史报告
 const reports = ref({ data: [], total: 0, page: 1, page_size: 20 })
 const searchQuery = ref('')
+const reportType = ref('group') // 'group' 或 'personal'
 
 // 个人报告相关
 const personalFile = ref(null)
@@ -833,10 +872,20 @@ const loadReports = async (page = 1) => {
   try {
     const params = { page, page_size: 20 }
     if (searchQuery.value) {
-      params.chat_name = searchQuery.value
+      if (reportType.value === 'group') {
+        params.chat_name = searchQuery.value
+      } else {
+        // 个人报告可以搜索群聊名称或用户名称
+        params.chat_name = searchQuery.value
+        params.user_name = searchQuery.value
+      }
     }
     
-    const { data } = await axios.get(`${API_BASE}/reports`, { params })
+    const apiEndpoint = reportType.value === 'group' 
+      ? `${API_BASE}/reports`
+      : `${API_BASE}/personal-reports`
+    
+    const { data } = await axios.get(apiEndpoint, { params })
     reports.value = data
   } catch (err) {
     alert('加载失败: ' + (err.message || '未知错误'))
@@ -862,6 +911,26 @@ const deleteReport = async (reportId) => {
   }
 }
 
+const deletePersonalReport = async (reportId) => {
+  if (!confirm('确定要删除这个个人报告吗？此操作不可恢复！')) return
+  
+  try {
+    await axios.delete(`${API_BASE}/personal-reports/${reportId}`)
+    alert('删除成功')
+    loadReports(reports.value.page)
+  } catch (err) {
+    const errorMsg = err?.response?.data?.error || '删除失败，请稍后重试'
+    alert(errorMsg)
+  }
+}
+
+const getPersonalReportUrl = (reportId) => {
+  // 如果传入了reportId，使用传入的值；否则使用当前生成的报告ID
+  const id = reportId || personalReport.value?.report_id
+  if (!id) return ''
+  return `${SITE_URL}/personal-report/personal-classic/${id}`
+}
+
 const formatDate = (dateStr) => {
   const date = new Date(dateStr)
   return date.toLocaleString('zh-CN', {
@@ -876,18 +945,15 @@ const formatDate = (dateStr) => {
 
 // 页面加载时初始化
 // 个人报告相关方法
-const getPersonalReportUrl = () => {
-  if (!personalReport.value?.report_id) return ''
-  return `${SITE_URL}/personal-report/personal-classic/${personalReport.value.report_id}`
+const openPersonalReport = (reportId) => {
+  // 如果传入了reportId，使用传入的值；否则使用当前生成的报告ID
+  const id = reportId || personalReport.value?.report_id
+  if (!id) return
+  window.open(`/personal-report/personal-classic/${id}`, '_blank')
 }
 
-const openPersonalReport = () => {
-  if (!personalReport.value?.report_id) return
-  window.open(`/personal-report/personal-classic/${personalReport.value.report_id}`, '_blank')
-}
-
-const copyPersonalReportUrl = async () => {
-  const url = getPersonalReportUrl()
+const copyPersonalReportUrl = async (reportId) => {
+  const url = getPersonalReportUrl(reportId)
   try {
     await navigator.clipboard.writeText(url)
     alert('链接已复制到剪贴板')
