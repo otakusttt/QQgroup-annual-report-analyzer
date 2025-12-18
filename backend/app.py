@@ -69,6 +69,7 @@ RATE_LIMIT_GET_REPORT = os.getenv('RATE_LIMIT_GET_REPORT', '100 per hour')
 RATE_LIMIT_LIST_REPORTS = os.getenv('RATE_LIMIT_LIST_REPORTS', '200 per hour')
 RATE_LIMIT_GENERATE_IMAGE = os.getenv('RATE_LIMIT_GENERATE_IMAGE', '30 per hour')
 RATE_LIMIT_DELETE_REPORT = os.getenv('RATE_LIMIT_DELETE_REPORT', '50 per hour')
+RATE_LIMIT_IP_LIST = os.getenv('RATE_LIMIT_IP_LIST', '127.0.0.1')
 
 # AI功能开关
 AI_COMMENT_ENABLED = os.getenv('AI_COMMENT_ENABLED', 'false').lower() == 'true'
@@ -118,6 +119,11 @@ else:
         enabled=False
     )
     logger.warning("⚠️  速率限制已禁用（仅限本地开发使用）")
+
+# 限流器筛选跳过ip白名单
+@limiter.request_filter
+def ratelimit_filter_bypass():
+    return request.remote_addr in RATE_LIMIT_IP_LIST
 
 # 添加安全响应头
 @app.after_request
